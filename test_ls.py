@@ -1,10 +1,11 @@
 import os
 import unittest
+from unittest.mock import patch, MagicMock, PropertyMock
 
 from ls import parse_arguments, LISTING_ARG, DirectoryListingPrinter
 
 
-class ParserTestCase(unittest.TestCase):
+class ParserTest(unittest.TestCase):
 
     def test_parser(self):
         valid_path = os.getcwd()
@@ -34,7 +35,7 @@ class ParserTestCase(unittest.TestCase):
             self.assertEqual(se_mock.exception.code, 2)
 
 
-class DirectoryListingPrinterTestCase(unittest.TestCase):
+class DirectoryListingPrinterTest(unittest.TestCase):
 
     def test_init(self):
         valid_path = os.getcwd()
@@ -69,6 +70,85 @@ class DirectoryListingPrinterTestCase(unittest.TestCase):
         self.assertEqual(listing.path, valid_path)
         self.assertEqual(listing.display_details, False)
         self.assertEqual(listing.prefix, filename)
+
+    def test_start(self):
+        valid_path = os.getcwd()
+        prefix = "prefix"
+        invalid_path = valid_path + "not_valid_anymore"
+        full_path = invalid_path + os.path.sep + prefix
+
+        # -- Non Valid Path --
+        listing = DirectoryListingPrinter(path=full_path)
+        self.assertEqual(listing.path, invalid_path)
+        self.assertEqual(listing.display_details, False)
+        self.assertEqual(listing.prefix, prefix)
+        with patch('logging.error') as mock:
+            listing.start()
+            mock.assert_called_with("Directory path is NOT valid", exc_info=True)
+
+        # -- START --
+
+        # Mock creation for File To KEEP - Valid file
+        file_in_entries_mock = MagicMock(is_file=True)
+        file_in_entries_mock_name = PropertyMock(return_value='file')
+        type(file_in_entries_mock).name = file_in_entries_mock_name
+
+        # -- Not A File --
+
+        # listing creation
+        listing = DirectoryListingPrinter(path=valid_path)
+
+        # Mock creation for NOT to keep - Not a file
+        not_in_entries_mock = MagicMock(is_file=False)
+        not_in_entries_mock_name = PropertyMock(return_value='not_a_file')
+        type(not_in_entries_mock).name = not_in_entries_mock_name
+
+        scan_return = [file_in_entries_mock, not_in_entries_mock]
+        with patch('os.scandir', return_value=scan_return) as patched_scan:
+            listing.start()
+            patched_scan.assert_called_with(path=valid_path)
+            self.assertNotIn(not_in_entries_mock, listing.entries_to_print)
+            self.assertIn(file_in_entries_mock, listing.entries_to_print)
+
+        # -- Hidden File --
+
+        # listing creation
+        listing = DirectoryListingPrinter(path=valid_path)
+
+        # Mock creation for NOT to keep - hidden file
+        not_in_entries_mock = MagicMock(is_file=False)
+        not_in_entries_mock_name = PropertyMock(return_value='.hidden_file')
+        type(not_in_entries_mock).name = not_in_entries_mock_name
+
+        scan_return = [file_in_entries_mock, not_in_entries_mock]
+        with patch('os.scandir', return_value=scan_return) as patched_scan:
+            listing.start()
+            patched_scan.assert_called_with(path=valid_path)
+            self.assertNotIn(not_in_entries_mock, listing.entries_to_print)
+            self.assertIn(file_in_entries_mock, listing.entries_to_print)
+
+        # -- Prefix --
+        # listing creation
+        prefix = "prefix"
+        path = valid_path + os.path.sep + prefix
+        listing = DirectoryListingPrinter(path=path)
+
+        # Mock creation for File To KEEP - Valid file
+        file_in_entries_mock = MagicMock(is_file=True)
+        file_in_entries_mock_name = PropertyMock(return_value=prefix + '_file')
+        type(file_in_entries_mock).name = file_in_entries_mock_name
+
+        # Mock creation for NOT to keep - No Prefix
+        not_in_entries_mock = MagicMock(is_file=True)
+        not_in_entries_mock_name = PropertyMock(return_value='without_prefix_file')
+        type(not_in_entries_mock).name = not_in_entries_mock_name
+
+        scan_return = [file_in_entries_mock, not_in_entries_mock]
+        with patch('os.scandir', return_value=scan_return) as patched_scan:
+            listing.start()
+            patched_scan.assert_called_with(path=valid_path)
+            self.assertNotIn(not_in_entries_mock, listing.entries_to_print)
+            self.assertIn(file_in_entries_mock, listing.entries_to_print)
 
 
 if __name__ == '__main__':
